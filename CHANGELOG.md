@@ -42,3 +42,14 @@
 - Realtime script: secrets via environment variables recommended (command
   line arguments end up in shell history); fetching the TTS audio no longer
   crashes the run on a network error.
+
+## 2.2.1
+
+### Added
+- Brand assets (`brand/icon.png` 256×256, `icon@2x.png` 512×512) so HACS
+  validation passes without a Home Assistant brands-repo entry.
+
+### Changed
+- AGENTS.md updated for the 2.2.0 changes (usage chunks, truncation,
+  reauth, network-error handling, Anthropic caching, Gemini ids, single
+  client registry).

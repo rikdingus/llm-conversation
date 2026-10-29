@@ -40,6 +40,7 @@ llm-conversation/
 ├── README.md                     ← user-facing install & usage docs
 ├── hacs.json                     ← HACS metadata
 ├── test_smoke.py                  ← offline test suite (stubs HA/probatio/aiohttp)
+├── CHANGELOG.md
 ├── scripts/test_realtime.py      ← live API test (Mistral + HA REST, stdlib only)
 ├── .github/workflows/validate.yaml
 └── custom_components/llm_conversation/
@@ -51,6 +52,7 @@ llm-conversation/
     ├── entity.py                 ← chat-log → provider loop, stream transform
     ├── stt.py                     ← Voxtral SpeechToTextEntity (Mistral only)
     ├── tts.py                     ← Voxtral TextToSpeechEntity (Mistral only)
+    ├── brand/icon.png, icon@2x.png ← brand assets (required by HACS validation)
     └── providers/
         ├── __init__.py           ← ProviderClient ABC, error classes, SSE helpers
         ├── openai_compat.py      ← generic chat/completions client + SSE parser
@@ -95,7 +97,14 @@ thing `entity._transform_stream` understands):
                                 #  "function": {"name": ..., "arguments": "<json fragment>"}}
 {"tool_calls_done": True}        # optional early-completion signal
 {"finish_reason": "stop" | "tool_calls" | "length"}
+{"usage": {"input_tokens": int, "output_tokens": int}}   # optional, any time
 ```
+
+`usage` chunks are consumed by `entity._trace_usage` (written to the
+conversation trace as `{"stats": ...}`) and never reach
+`_transform_stream`. `finish_reason == "length"` makes `_transform_stream`
+raise a `HomeAssistantError` so a truncated answer is never shown as if it
+were complete.
 
 `entity._transform_stream` accumulates the fragments and, when a tool call
 is complete (done signal or stream end), yields HA delta dicts:
@@ -110,7 +119,10 @@ next loop iteration converts back to canonical `role: "tool"` messages.
 for _iteration in range(MAX_TOOL_ITERATIONS):
     payload = client.build_payload(...)
     content_stream = chat_log.async_add_delta_content_stream(
-        self.entity_id, self._transform_stream(client.async_stream_chat(payload))
+        self.entity_id,
+        self._transform_stream(
+            self._trace_usage(chat_log, client.async_stream_chat(payload))
+        ),
     )
     messages.extend(_convert_content_to_param([c async for c in content_stream]))
     if not chat_log.unresponded_tool_results:
@@ -119,19 +131,27 @@ for _iteration in range(MAX_TOOL_ITERATIONS):
 
 **Error model**: providers raise `ProviderAuthError` / `ProviderRateLimitError`
 / `ProviderConnectionError` / `ProviderError`; the entity translates them to
-`HomeAssistantError`; setup translates them to `ConfigEntryAuthFailed` /
-`ConfigEntryNotReady` (which triggers the reauth flow).
+`HomeAssistantError` (and starts reauth on `ProviderAuthError`); setup
+translates them to `ConfigEntryAuthFailed` (reauth flow) /
+`ConfigEntryNotReady` (automatic retry). Raw `aiohttp.ClientError` and
+`TimeoutError` are treated as connection errors everywhere (setup, config
+flow, conversation): Home Assistant on the router often starts before the
+internet is up, and setup must retry instead of failing permanently.
 
 ## Provider-specific gotchas
 
-- **Anthropic**: do NOT send `temperature` — current Claude models reject
-  non-default sampling parameters (the options flow hides the field for
-  Anthropic). Messages must strictly alternate user/assistant — the
+- **Anthropic**: do NOT send `temperature` — API version `2026-10-21`
+  removed `temperature`/`top_p`/`top_k` (400 on every model; the options
+  flow hides the field for Anthropic). Prompt caching: the last tool and
+  the system block carry `cache_control: {"type": "ephemeral"}` (the system
+  prompt is sent as a block list for this); both repeat on every tool-call
+  round. Messages must strictly alternate user/assistant — the
   adapter merges consecutive same-role turns. Tool results are user turns
   with `tool_result` blocks; tool calls are `tool_use` blocks.
-- **Gemini**: no tool call IDs exist; the adapter synthesizes
-  `call_0`, `call_1`, ... and maps them back to function names via the
-  preceding assistant turn. Tool results are `functionResponse` parts in a
+- **Gemini**: no tool call IDs exist; the adapter synthesizes random
+  `call_<12 hex>` ids (unique across tool-call rounds — per-round counters
+  collided) and maps them back to function names via the preceding
+  assistant turn. Tool results are `functionResponse` parts in a
   `user` turn. System prompt goes to `systemInstruction`.
 - **GitHub Models**: catalog lives at `/catalog/models`, inference at
   `/inference/chat/completions` (OpenAI schema). Auth: PAT with
@@ -181,9 +201,9 @@ to the forwarded platforms for those entries (setup AND unload).
 2. `providers/x.py`: subclass `ProviderClient` (or `OpenAICompatibleClient`
    if the API is OpenAI-compatible) and implement `async_list_models`,
    `build_payload`, `async_stream_chat` per the contract above.
-3. `__init__.py`: register the client class in `CLIENT_CLASSES`.
-4. `config_flow.py`: register it in the `client_classes` map of
-   `validate_input`.
+3. `__init__.py`: register the client class in `CLIENT_CLASSES` (the
+   config flow imports the same map — there is no second registry).
+4. Yield `{"usage": ...}` from the stream if the API reports token usage.
 5. Extend `test_smoke.py` with a converter test and an SSE-stream test for
    the new provider (see the existing Anthropic/Gemini/OpenAI tests).
 6. No new translation keys are needed unless you add new form fields.
@@ -199,8 +219,11 @@ python3 test_smoke.py     # must print: ALL SMOKE TESTS PASSED
 
 `test_smoke.py` stubs `homeassistant`, `probatio` and `aiohttp` modules,
 then exercises: chat-log → canonical conversion, Anthropic/Gemini message
-conversion, and full SSE → `ToolInput` pipelines for all three wire
-formats. Run it after every change to `entity.py` or `providers/`.
+conversion, full SSE → `ToolInput` pipelines for all three wire formats,
+the Voxtral STT/TTS entities, token usage tracing, max-tokens truncation,
+Anthropic cache markers, unique Gemini ids and empty transcriptions. It
+locates the component relative to its own path, so it runs anywhere
+(locally and in CI). Run it after every change to `entity.py` or `providers/`.
 CI (`.github/workflows/validate.yaml`) runs HACS validation and hassfest.
 
 **`scripts/test_realtime.py`** runs against the LIVE Mistral API and,
