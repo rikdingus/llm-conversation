@@ -1,0 +1,12 @@
+{
+  "domain": "llm_conversation",
+  "name": "LLM Conversation",
+  "codeowners": ["@rikvdbosch"],
+  "config_flow": true,
+  "dependencies": ["conversation", "stt", "tts"],
+  "documentation": "https://github.com/rikvdbosch/llm-conversation",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "2.1.0"
+}

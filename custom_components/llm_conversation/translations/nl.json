@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Kies een provider",
+        "description": "Selecteer welke AI-provider deze conversation agent aanstuurt.",
+        "data": {
+          "provider": "Provider"
+        }
+      },
+      "api_key": {
+        "title": "API-sleutel",
+        "data": {
+          "api_key": "API-sleutel"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw inloggen",
+        "data": {
+          "api_key": "API-sleutel"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken",
+      "invalid_auth": "Ongeldige inloggegevens",
+      "unknown": "Onverwachte fout"
+    },
+    "abort": {
+      "reauth_successful": "Opnieuw inloggen geslaagd"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "prompt": "Instructies",
+          "llm_hass_api": "Home Assistant bedienen",
+          "chat_model": "Model",
+          "temperature": "Temperatuur",
+          "max_tokens": "Maximaal aantal tokens in het antwoord",
+          "stt_model": "Spraak-naar-tekst model (Voxtral)",
+          "tts_model": "Tekst-naar-spraak model (Voxtral)",
+          "tts_voice_id": "Stem-ID (uit Mistral Studio)"
+        }
+      }
+    }
+  }
+}

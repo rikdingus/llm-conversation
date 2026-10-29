@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+*.uuid
+.secrets.yaml
+storage/
+
+# Realtime test audio output
+/test_tts.wav
+/test_tts.mp3
+/test_ha_tts.mp3

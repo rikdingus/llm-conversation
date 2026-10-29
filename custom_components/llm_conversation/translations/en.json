@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choose a provider",
+        "description": "Select which AI provider powers this conversation agent.",
+        "data": {
+          "provider": "Provider"
+        }
+      },
+      "api_key": {
+        "title": "API key",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "prompt": "Instructions",
+          "llm_hass_api": "Control Home Assistant",
+          "chat_model": "Model",
+          "temperature": "Temperature",
+          "max_tokens": "Maximum tokens to return in response",
+          "stt_model": "Speech-to-text model (Voxtral)",
+          "tts_model": "Text-to-speech model (Voxtral)",
+          "tts_voice_id": "Voice ID (from Mistral Studio)"
+        }
+      }
+    }
+  }
+}
