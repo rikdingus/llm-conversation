@@ -53,3 +53,26 @@
 - AGENTS.md updated for the 2.2.0 changes (usage chunks, truncation,
   reauth, network-error handling, Anthropic caching, Gemini ids, single
   client registry).
+
+## 2.2.2
+
+### Added
+- **Automated setup script** (`scripts/setup_assist.py`): does everything
+  after the HACS install, driven entirely by the HA API — creates the
+  Mistral config entry (or reuses an existing one), saves the options
+  (Assist device control, Voxtral STT/TTS models, voice ID), waits for
+  the conversation/stt/tts entities and points the preferred Assist
+  pipeline at them (language `nl-NL` by default). Pure standard library,
+  so it runs on your laptop or in the HA SSH/terminal add-on. Secrets are
+  read from environment variables only, never from the command line.
+- `test_setup_mock.py`: offline test for the setup script against a mock
+  HA server (config flow, options flow, entity polling, websocket pipeline
+  update, entry reuse).
+- README: "Automated setup" section with bash and Windows PowerShell
+  examples (`py` instead of `python3`).
+
+### Changed
+- **Minimum Home Assistant version raised to 2026.10.0** (`hacs.json`),
+  matching the LLM API surface the integration is built and verified
+  against (2026.10.4).
+- Version bumped to 2.2.2.

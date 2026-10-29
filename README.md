@@ -152,7 +152,9 @@ llm-conversation/
 ├── LICENSE                    ← MIT
 ├── hacs.json
 ├── test_smoke.py              ← offline test suite (no HA install needed)
+├── test_setup_mock.py         ← offline test for scripts/setup_assist.py (mock HA server)
 ├── scripts/test_realtime.py   ← live end-to-end test against Mistral + your HA
+├── scripts/setup_assist.py    ← automated post-install setup (entry → options → pipeline)
 ├── .github/workflows/validate.yaml   ← HACS + hassfest + smoke tests
 └── custom_components/llm_conversation/
 ```
@@ -162,6 +164,7 @@ Quick checks from the repository root:
 ```bash
 python3 -m py_compile $(find custom_components -name "*.py")
 python3 test_smoke.py
+python3 test_setup_mock.py
 ```
 
 The full architecture (canonical message format, provider adapter contract,
@@ -169,6 +172,39 @@ the checklist for adding a new provider) is documented in
 [AGENTS.md](AGENTS.md) — written so that AI coding agents (Copilot, Claude
 Code, Codex, Cursor, …) and human contributors can work on the codebase
 consistently.
+
+### Automated setup
+
+`scripts/setup_assist.py` does everything after the HACS install, driven
+entirely by the HA API: creates the Mistral config entry, saves the
+options (device control + Voxtral models + voice ID), waits for the three
+entities and points the preferred Assist pipeline at them. Standard
+library only, so it runs on your laptop or in the HA SSH/terminal add-on.
+
+```bash
+export HASS_URL=http://homeassistant.local:8123
+export HASS_TOKEN=<long-lived token: Profile → Security>
+export MISTRAL_API_KEY=<key from console.mistral.ai>
+export MISTRAL_VOICE_ID=<voice id from studio.mistral.ai>
+python3 scripts/setup_assist.py
+```
+
+On Windows, use `py` instead of `python3` and set the variables for the
+session in PowerShell:
+
+```powershell
+$env:HASS_URL         = "http://homeassistant.local:8123"
+$env:HASS_TOKEN       = "<long-lived token: Profile → Security>"
+$env:MISTRAL_API_KEY  = "<key from console.mistral.ai>"
+$env:MISTRAL_VOICE_ID = "<voice id from studio.mistral.ai>"
+py scripts/setup_assist.py
+```
+
+The HA token must belong to an admin user (the pipeline update uses
+websocket commands that require admin). The token, API key and voice ID
+are only read from the environment — never from the command line, so
+they don't end up in your shell history. `test_setup_mock.py` at the
+repository root tests this script offline against a mock HA server.
 
 ### Live end-to-end test
 
