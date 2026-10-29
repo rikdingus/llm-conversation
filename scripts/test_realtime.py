@@ -21,9 +21,13 @@ Home Assistant tests (need --ha-url and --ha-token):
                             (resampled from the TTS WAV)
 
 Usage:
-  python3 scripts/test_realtime.py --api-key K --voice-id V
-  python3 scripts/test_realtime.py --api-key K --voice-id V \
-      --ha-url http://homeassistant.local:8123 --ha-token T
+  export MISTRAL_API_KEY=...   MISTRAL_VOICE_ID=...
+  python3 scripts/test_realtime.py
+  export HASS_URL=http://homeassistant.local:8123  HASS_TOKEN=...
+  python3 scripts/test_realtime.py
+
+(Secrets via environment variables: command-line arguments end up in
+shell history and the process list.)
 
 API key and voice ID come from console.mistral.ai / studio.mistral.ai.
 The HA token is a long-lived access token (Profile -> Security).
@@ -256,8 +260,14 @@ def test_ha_tts(ha_url: str, token: str, tts_entity: str, text: str, out_dir: Pa
     if not url:
         record("HA TTS entity", False, f"geen url in antwoord: {str(data)[:120]}")
         return
-    with urllib.request.urlopen(url, timeout=120) as resp:
-        audio = resp.read()
+    if url.startswith("/"):
+        url = f"{ha_url}{url}"
+    try:
+        with urllib.request.urlopen(url, timeout=120) as resp:
+            audio = resp.read()
+    except (urllib.error.URLError, TimeoutError) as err:
+        record("HA TTS entity", False, f"audio ophalen mislukt: {err}")
+        return
     path = out_dir / "test_ha_tts.mp3"
     path.write_bytes(audio)
     record(
@@ -315,7 +325,7 @@ def pcm_16k_mono(wav_bytes: bytes) -> bytes | None:
 def test_ha_stt(ha_url: str, token: str, stt_entity: str, wav_bytes: bytes) -> None:
     pcm = pcm_16k_mono(wav_bytes)
     if pcm is None:
-        record("HA STT entity", False, "TTS-WAV kon niet naar 16 kHz PCM worden omgezet (8-bit test wordt gebruikt)")
+        record("HA STT entity", False, "TTS-WAV kon niet naar 16 kHz PCM worden omgezet (alleen 8/16-bit integer PCM wordt ondersteund)")
         return
     headers = ha_headers(token, "audio/wav")
     headers["X-Speech-Content"] = (
@@ -341,7 +351,7 @@ def test_ha_stt(ha_url: str, token: str, stt_entity: str, wav_bytes: bytes) -> N
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--api-key", default=None, help="Mistral API key (of env MISTRAL_API_KEY)")
+    parser.add_argument("--api-key", default=None, help="Mistral API key. Liever via env MISTRAL_API_KEY: argumenten belanden in je shell-history")
     parser.add_argument("--voice-id", default=None, help="Voice ID uit Mistral Studio (of env MISTRAL_VOICE_ID)")
     parser.add_argument("--chat-model", default=DEFAULT_CHAT_MODEL)
     parser.add_argument("--stt-model", default=DEFAULT_STT_MODEL)
@@ -349,10 +359,10 @@ def main() -> int:
     parser.add_argument("--text", default=DEFAULT_TEXT, help="Tekst voor de TTS/round-trip test")
     parser.add_argument("--out-dir", default=".", help="Waar audiofiles worden opgeslagen")
     parser.add_argument("--ha-url", default=None, help="bijv. http://homeassistant.local:8123 (of env HASS_URL)")
-    parser.add_argument("--ha-token", default=None, help="HA long-lived token (of env HASS_TOKEN)")
-    parser.add_argument("--agent-id", default="conversation.llm_conversation")
-    parser.add_argument("--stt-entity", default="stt.mistral_speech_to_text")
-    parser.add_argument("--tts-entity", default="tts.mistral_text_to_speech")
+    parser.add_argument("--ha-token", default=None, help="HA long-lived token. Liever via env HASS_TOKEN")
+    parser.add_argument("--agent-id", default="conversation.mistral_ai")
+    parser.add_argument("--stt-entity", default="stt.mistral_ai_speech_to_text")
+    parser.add_argument("--tts-entity", default="tts.mistral_ai_text_to_speech")
     args = parser.parse_args()
 
     import os

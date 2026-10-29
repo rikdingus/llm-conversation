@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import aiohttp
 import probatio
 
 from homeassistant.config_entries import (
@@ -33,7 +34,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from . import LLMConversationConfigEntry
+from . import CLIENT_CLASSES, LLMConversationConfigEntry
 from .const import (
     CHAT_MODELS,
     CONF_CHAT_MODEL,
@@ -55,11 +56,7 @@ from .const import (
     STT_MODELS,
     TTS_MODELS,
 )
-from .providers import ProviderError
-from .providers.anthropic import AnthropicClient
-from .providers.github_models import GitHubModelsClient
-from .providers.google import GeminiClient
-from .providers.mistral import MistralClient
+from .providers import ProviderAuthError, ProviderConnectionError, ProviderError
 
 STEP_PROVIDER_SCHEMA = probatio.Schema(
     {
@@ -86,13 +83,7 @@ STEP_API_KEY_SCHEMA = probatio.Schema(
 
 async def validate_input(hass: HomeAssistant, provider: str, api_key: str) -> None:
     """Validate that the API key allows us to connect."""
-    client_classes = {
-        "mistral": MistralClient,
-        "anthropic": AnthropicClient,
-        "google": GeminiClient,
-        "github_models": GitHubModelsClient,
-    }
-    client = client_classes[provider](async_get_clientsession(hass), api_key)
+    client = CLIENT_CLASSES[provider](async_get_clientsession(hass), api_key)
     await client.async_list_models()
 
 
@@ -127,10 +118,12 @@ class LLMConversationConfigFlow(ConfigFlow, domain=DOMAIN):
             assert provider is not None
             try:
                 await validate_input(self.hass, provider, user_input[CONF_API_KEY])
-            except ProviderError:
+            except ProviderAuthError:
                 errors["base"] = "invalid_auth"
-            except TimeoutError:
+            except (ProviderConnectionError, aiohttp.ClientError, TimeoutError):
                 errors["base"] = "cannot_connect"
+            except ProviderError:
+                errors["base"] = "unknown"
             except Exception:  # noqa: BLE001
                 errors["base"] = "unknown"
             else:
@@ -169,10 +162,12 @@ class LLMConversationConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await validate_input(self.hass, provider, user_input[CONF_API_KEY])
-            except ProviderError:
+            except ProviderAuthError:
                 errors["base"] = "invalid_auth"
-            except TimeoutError:
+            except (ProviderConnectionError, aiohttp.ClientError, TimeoutError):
                 errors["base"] = "cannot_connect"
+            except ProviderError:
+                errors["base"] = "unknown"
             except Exception:  # noqa: BLE001
                 errors["base"] = "unknown"
             else:
@@ -343,7 +338,7 @@ class LLMConversationOptionsFlowHandler(OptionsFlow):
         if client is not None:
             try:
                 fetched = await client.async_list_models()
-            except ProviderError:
+            except (ProviderError, aiohttp.ClientError, TimeoutError):
                 pass
             else:
                 if fetched:

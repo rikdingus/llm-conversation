@@ -93,6 +93,14 @@ class OpenAICompatibleClient(ProviderClient):
                     chunk = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                if usage := chunk.get("usage"):
+                    # Mistral sends usage in the final chunk.
+                    yield {
+                        "usage": {
+                            "input_tokens": usage.get("prompt_tokens", 0),
+                            "output_tokens": usage.get("completion_tokens", 0),
+                        }
+                    }
                 choices = chunk.get("choices") or [{}]
                 choice = choices[0]
                 delta = choice.get("delta") or {}

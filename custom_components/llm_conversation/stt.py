@@ -134,4 +134,8 @@ class MistralVoxtralSTTEntity(stt.SpeechToTextEntity):
             raise HomeAssistantError(
                 f"Voxtral transcription failed: {err}"
             ) from err
+        if not text.strip():
+            # Nothing recognised (silence/noise): report an error instead of
+            # sending an empty sentence to the conversation agent.
+            return stt.SpeechResult(text=None, result=stt.SpeechResultState.ERROR)
         return stt.SpeechResult(text=text, result=stt.SpeechResultState.SUCCESS)

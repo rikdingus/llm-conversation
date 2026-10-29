@@ -75,8 +75,10 @@ class AnthropicClient(ProviderClient):
             "messages": converted,
             "stream": True,
         }
-        if system_texts:
-            payload["system"] = "\n\n".join(system_texts)
+        # Prompt caching: tools and the system prompt (Home Assistant
+        # instructions + exposed entities) are identical on every tool-call
+        # round, so mark them cacheable. Cache reads cost a fraction of
+        # normal input tokens.
         if tools:
             payload["tools"] = [
                 {
@@ -85,6 +87,15 @@ class AnthropicClient(ProviderClient):
                     "input_schema": tool["function"]["parameters"],
                 }
                 for tool in tools
+            ]
+            payload["tools"][-1]["cache_control"] = {"type": "ephemeral"}
+        if system_texts:
+            payload["system"] = [
+                {
+                    "type": "text",
+                    "text": "\n\n".join(system_texts),
+                    "cache_control": {"type": "ephemeral"},
+                }
             ]
         return payload
 
@@ -198,6 +209,7 @@ class AnthropicClient(ProviderClient):
         ) as resp:
             await raise_for_status(resp)
             role_sent = False
+            input_tokens = 0
             async for data in iter_sse_data(resp):
                 try:
                     event = json.loads(data)
@@ -206,6 +218,12 @@ class AnthropicClient(ProviderClient):
                     continue
                 event_type = event.get("type")
                 if event_type == "message_start":
+                    usage = (event.get("message") or {}).get("usage") or {}
+                    input_tokens = (
+                        usage.get("input_tokens", 0)
+                        + usage.get("cache_read_input_tokens", 0)
+                        + usage.get("cache_creation_input_tokens", 0)
+                    )
                     yield {"role": "assistant"}
                     role_sent = True
                 elif event_type == "content_block_start":
@@ -246,6 +264,13 @@ class AnthropicClient(ProviderClient):
                             ]
                         }
                 elif event_type == "message_delta":
+                    if usage := event.get("usage"):
+                        yield {
+                            "usage": {
+                                "input_tokens": input_tokens,
+                                "output_tokens": usage.get("output_tokens", 0),
+                            }
+                        }
                     stop_reason = event.get("delta", {}).get("stop_reason")
                     if stop_reason == "tool_use":
                         yield {"finish_reason": "tool_calls"}

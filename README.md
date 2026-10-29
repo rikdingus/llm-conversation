@@ -94,7 +94,7 @@ Built and verified against **Home Assistant 2026.10.4**.
 ```yaml
 action: conversation.process
 data:
-  agent_id: conversation.llm_conversation
+  agent_id: conversation.mistral_ai
   text: "Zet het licht in de woonkamer aan"
 ```
 
@@ -114,10 +114,10 @@ Assist pipeline runs on Mistral:
    be rejected by the API.
 4. Open **Settings → Assist** (or a pipeline / voice satellite) and set:
    - *Speech-to-text*: the **Speech to text** entity of this integration
-     (e.g. `stt.mistral_speech_to_text`)
+     (e.g. `stt.mistral_ai_speech_to_text`)
    - *Conversation agent*: your Mistral agent
    - *Text-to-speech*: the **Text to speech** entity of this integration
-     (e.g. `tts.mistral_text_to_speech`)
+     (e.g. `tts.mistral_ai_text_to_speech`)
 
 Voxtral transcription covers Dutch, English, French, German and many more
 languages; the STT entity never blocks a pipeline on a language mismatch.

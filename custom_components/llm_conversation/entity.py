@@ -9,6 +9,7 @@ from mimetypes import guess_file_type
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 import probatio
 
 from homeassistant.components import conversation
@@ -217,7 +218,9 @@ class LLMConversationBaseEntity(Entity):
                 )
                 content_stream = chat_log.async_add_delta_content_stream(
                     self.entity_id,
-                    self._transform_stream(client.async_stream_chat(payload)),
+                    self._transform_stream(
+                        self._trace_usage(chat_log, client.async_stream_chat(payload))
+                    ),
                 )
                 messages.extend(
                     _convert_content_to_param(
@@ -226,13 +229,15 @@ class LLMConversationBaseEntity(Entity):
                 )
             except ProviderAuthError as err:
                 LOGGER.error("Authentication with the provider failed: %s", err)
+                # Show the "re-authenticate" prompt in Settings.
+                self.entry.async_start_reauth(self.hass)
                 raise HomeAssistantError(
                     "Authentication with the provider failed"
                 ) from err
             except ProviderRateLimitError as err:
                 LOGGER.error("Rate limited by the provider: %s", err)
                 raise HomeAssistantError("Rate limited by the provider") from err
-            except ProviderConnectionError as err:
+            except (ProviderConnectionError, aiohttp.ClientError, TimeoutError) as err:
                 LOGGER.error("Error connecting to the provider: %s", err)
                 raise HomeAssistantError(
                     "Error connecting to the provider"
@@ -244,6 +249,17 @@ class LLMConversationBaseEntity(Entity):
             if not chat_log.unresponded_tool_results:
                 break
             LOGGER.debug("Continuing chat after tool call round %s", _iteration + 1)
+
+    @staticmethod
+    async def _trace_usage(
+        chat_log: conversation.ChatLog, stream: AsyncGenerator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any]]:
+        """Record token usage in the conversation trace, pass chunks through."""
+        async for chunk in stream:
+            if usage := chunk.get("usage"):
+                chat_log.async_trace({"stats": usage})
+                continue
+            yield chunk
 
     @staticmethod
     def _flush_tool_calls(
@@ -304,6 +320,11 @@ class LLMConversationBaseEntity(Entity):
                         tool_call["name"] = function["name"]
                     if function.get("arguments"):
                         tool_call["arguments"] += function["arguments"]
+            if chunk.get("finish_reason") == "length":
+                raise HomeAssistantError(
+                    "Response incomplete: the maximum number of tokens was"
+                    " reached. Increase 'Maximum tokens' in the options."
+                )
             if chunk.get("tool_calls_done"):
                 for tool_input in self._flush_tool_calls(tool_calls):
                     pending.append({"tool_calls": [tool_input]})

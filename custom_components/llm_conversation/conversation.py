@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import LLMConversationConfigEntry
-from .const import DOMAIN, PROVIDER_LABELS
+from .const import DOMAIN
 from .entity import LLMConversationBaseEntity
 
 

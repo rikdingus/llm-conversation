@@ -1,6 +1,7 @@
 """Client for the Google Gemini API."""
 
 import json
+from uuid import uuid4
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -180,6 +181,14 @@ class GeminiClient(ProviderClient):
                 except json.JSONDecodeError:
                     LOGGER.debug("Could not parse Gemini SSE chunk: %s", data)
                     continue
+                if usage := chunk.get("usageMetadata"):
+                    if "candidatesTokenCount" in usage:
+                        yield {
+                            "usage": {
+                                "input_tokens": usage.get("promptTokenCount", 0),
+                                "output_tokens": usage["candidatesTokenCount"],
+                            }
+                        }
                 for candidate in chunk.get("candidates", []):
                     parts = (candidate.get("content") or {}).get("parts") or []
                     has_function_calls = False
@@ -196,7 +205,9 @@ class GeminiClient(ProviderClient):
                                 "tool_calls": [
                                     {
                                         "index": tool_index,
-                                        "id": f"call_{tool_index}",
+                                        # Unique across tool-call rounds;
+                                        # Gemini supplies no id itself.
+                                        "id": f"call_{uuid4().hex[:12]}",
                                         "type": "function",
                                         "function": {
                                             "name": function_call.get("name"),

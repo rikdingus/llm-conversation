@@ -198,7 +198,11 @@ sys.modules["aiohttp"] = aiohttp_stub
 
 # ---- Load the component without executing its HA-dependent __init__.py ----
 pkg = types.ModuleType("llm_conversation")
-pkg.__path__ = ["/home/user/llm-conversation/custom_components/llm_conversation"]
+from pathlib import Path
+
+pkg.__path__ = [
+    str(Path(__file__).resolve().parent / "custom_components" / "llm_conversation")
+]
 sys.modules["llm_conversation"] = pkg
 
 const = importlib.import_module("llm_conversation.const")
@@ -529,5 +533,91 @@ sent_payload = capture_tts.captured[0][1]["json"]
 assert sent_payload["voice_id"] == "my-voice"
 assert sent_payload["model"] == "voxtral-mini-tts-2603"
 print("TEST 11 OK: TTS entity pipeline (text -> Voxtral -> mp3 bytes)")
+
+# ---- Test 12: token usage reaches the conversation trace ----
+class FakeTraceLog:
+    def __init__(self):
+        self.traces = []
+
+    def async_trace(self, data):
+        self.traces.append(data)
+
+
+sse_usage = [
+    'data: {"choices":[{"delta":{"content":"Hoi"}}]}',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+    'data: {"choices":[],"usage":{"prompt_tokens":812,"completion_tokens":5}}',
+    'data: [DONE]',
+]
+usage_client = openai_mod.OpenAICompatibleClient(FakeSession(sse_usage), "key", "https://x/v1")
+trace_log = FakeTraceLog()
+passed = asyncio.run(collect(entity_mod.LLMConversationBaseEntity._trace_usage(
+    trace_log, usage_client.async_stream_chat(payload2)
+)))
+assert trace_log.traces == [{"stats": {"input_tokens": 812, "output_tokens": 5}}], trace_log.traces
+assert not any("usage" in chunk for chunk in passed), "usage chunks must not reach the chat log"
+print("TEST 12 OK: token usage -> trace stats")
+
+# ---- Test 13: truncated answer (max tokens) raises instead of silently cutting off ----
+sse_len = [
+    'data: {"choices":[{"delta":{"content":"Half antw"}}]}',
+    'data: {"choices":[{"delta":{},"finish_reason":"length"}]}',
+]
+len_client = openai_mod.OpenAICompatibleClient(FakeSession(sse_len), "key", "https://x/v1")
+try:
+    asyncio.run(collect(FakeEntity._transform_stream(
+        FakeEntity(), len_client.async_stream_chat(payload2)
+    )))
+except HomeAssistantError as err:
+    assert "maximum number of tokens" in str(err)
+else:
+    raise AssertionError("finish_reason=length must raise")
+print("TEST 13 OK: max-tokens truncation is reported")
+
+# ---- Test 14: Anthropic prompt caching + usage ----
+cache_payload = anthropic_client.build_payload(
+    model="claude-sonnet-5-5", messages=messages,
+    tools=[
+        {"type": "function", "function": {"name": "A", "description": "a", "parameters": {"type": "object"}}},
+        {"type": "function", "function": {"name": "B", "description": "b", "parameters": {"type": "object"}}},
+    ],
+    temperature=0.2, max_tokens=1024,
+)
+assert "cache_control" not in cache_payload["tools"][0]
+assert cache_payload["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+assert cache_payload["system"][0]["cache_control"] == {"type": "ephemeral"}
+assert cache_payload["system"][0]["text"] == "You are Home Assistant."
+sse_au = [
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":20,"cache_read_input_tokens":900}}}',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ok"}}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}',
+]
+au_log = FakeTraceLog()
+asyncio.run(collect(entity_mod.LLMConversationBaseEntity._trace_usage(
+    au_log, anthropic_mod.AnthropicClient(FakeSession(sse_au), "key").async_stream_chat(cache_payload)
+)))
+assert au_log.traces == [{"stats": {"input_tokens": 920, "output_tokens": 3}}], au_log.traces
+print("TEST 14 OK: Anthropic prompt caching markers + usage")
+
+# ---- Test 15: Gemini tool-call ids are unique across tool-call rounds ----
+ids = []
+for _ in range(2):
+    g = google_mod.GeminiClient(FakeSession(list(sse3)), "key")
+    ds = asyncio.run(collect(FakeEntity._transform_stream(FakeEntity(), g.async_stream_chat(payload4))))
+    ids += [d["tool_calls"][0].id for d in ds if "tool_calls" in d]
+assert len(ids) == 2 and ids[0] != ids[1], ids
+print("TEST 15 OK: Gemini tool-call ids unique per round")
+
+# ---- Test 16: empty transcription is an STT error, not an empty command ----
+empty_entry = FakeEntry()
+empty_entry.options = {}
+empty_entry.runtime_data = mistral_mod.MistralClient(CaptureSession({"text": "  "}), "k")
+empty_result = asyncio.run(
+    stt_mod.MistralVoxtralSTTEntity(empty_entry).async_process_audio_stream(
+        metadata, FakeStream([b"\x00\x00"])
+    )
+)
+assert empty_result.result == SpeechResultState.ERROR and empty_result.text is None
+print("TEST 16 OK: empty transcription -> STT error")
 
 print("ALL SMOKE TESTS PASSED")
