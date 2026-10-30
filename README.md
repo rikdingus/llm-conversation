@@ -119,6 +119,9 @@ Assist pipeline runs on Mistral:
    - *Text-to-speech*: the **Text to speech** entity of this integration
      (e.g. `tts.mistral_ai_text_to_speech`)
 
+Prefer to script it? [`scripts/setup_assist.py`](#automated-setup) does
+steps 1–4 in one go through the Home Assistant API.
+
 Voxtral transcription covers Dutch, English, French, German and many more
 languages; the STT entity never blocks a pipeline on a language mismatch.
 TTS output is MP3. Note: Mistral's content moderation may reject TTS
@@ -155,14 +158,14 @@ llm-conversation/
 ├── test_setup_mock.py         ← offline test for scripts/setup_assist.py (mock HA server)
 ├── scripts/test_realtime.py   ← live end-to-end test against Mistral + your HA
 ├── scripts/setup_assist.py    ← automated post-install setup (entry → options → pipeline)
-├── .github/workflows/validate.yaml   ← HACS + hassfest + smoke tests
+├── .github/workflows/validate.yaml   ← HACS + hassfest + offline tests
 └── custom_components/llm_conversation/
 ```
 
 Quick checks from the repository root:
 
 ```bash
-python3 -m py_compile $(find custom_components -name "*.py")
+python3 -m py_compile $(find custom_components scripts -name "*.py")
 python3 test_smoke.py
 python3 test_setup_mock.py
 ```
@@ -176,16 +179,26 @@ consistently.
 ### Automated setup
 
 `scripts/setup_assist.py` does everything after the HACS install, driven
-entirely by the HA API: creates the Mistral config entry, saves the
-options (device control + Voxtral models + voice ID), waits for the three
-entities and points the preferred Assist pipeline at them. Standard
-library only, so it runs on your laptop or in the HA SSH/terminal add-on.
+entirely by the HA API:
+
+1. creates the Mistral config entry (or reuses the existing one, also when
+   you renamed it);
+2. saves the options: Assist device control, Voxtral STT/TTS models and
+   voice ID. Anything you don't pass keeps its current value, so running
+   the script again never wipes your prompt, chat model or voice;
+3. waits until the conversation, STT and TTS entities are available;
+4. creates an Assist pipeline named **Mistral** (Voxtral STT → Mistral
+   agent → Voxtral TTS) and makes it the preferred pipeline. Your other
+   pipelines are not modified; use `--pipeline-name` to update an existing
+   pipeline instead, or `--no-preferred` to leave the preferred pipeline
+   alone.
+
+Standard library only, so it runs on your laptop or in the HA
+SSH/terminal add-on. The HA token must belong to an administrator.
 
 ```bash
 export HASS_URL=http://homeassistant.local:8123
-export HASS_TOKEN=<long-lived token: Profile → Security>
-export MISTRAL_API_KEY=<key from console.mistral.ai>
-export MISTRAL_VOICE_ID=<voice id from studio.mistral.ai>
+export MISTRAL_VOICE_ID=<voice id from Mistral Studio>
 python3 scripts/setup_assist.py
 ```
 
@@ -194,17 +207,31 @@ session in PowerShell:
 
 ```powershell
 $env:HASS_URL         = "http://homeassistant.local:8123"
-$env:HASS_TOKEN       = "<long-lived token: Profile → Security>"
-$env:MISTRAL_API_KEY  = "<key from console.mistral.ai>"
-$env:MISTRAL_VOICE_ID = "<voice id from studio.mistral.ai>"
-py scripts/setup_assist.py
+$env:MISTRAL_VOICE_ID = "<voice id from Mistral Studio>"
+py scripts\setup_assist.py
 ```
 
-The HA token must belong to an admin user (the pipeline update uses
-websocket commands that require admin). The token, API key and voice ID
-are only read from the environment — never from the command line, so
-they don't end up in your shell history. `test_setup_mock.py` at the
-repository root tests this script offline against a mock HA server.
+The script then asks for the HA long-lived token (Profile → Security) and,
+only when the config entry doesn't exist yet, the Mistral API key, both
+with hidden input. For unattended use it reads them from `HASS_TOKEN` and
+`MISTRAL_API_KEY` instead. Secrets are deliberately not accepted as
+command-line arguments, and typing them at the hidden prompt keeps them
+out of your shell history. To set them once for both this script and
+`scripts/test_realtime.py` without them landing in the history:
+
+```bash
+read -rsp "HA token: " HASS_TOKEN && export HASS_TOKEN && echo
+read -rsp "Mistral API key: " MISTRAL_API_KEY && export MISTRAL_API_KEY && echo
+```
+
+```powershell
+$env:HASS_TOKEN      = [Net.NetworkCredential]::new('', (Read-Host 'HA token' -AsSecureString)).Password
+$env:MISTRAL_API_KEY = [Net.NetworkCredential]::new('', (Read-Host 'Mistral API key' -AsSecureString)).Password
+```
+
+`python3 scripts/setup_assist.py --help` lists all options.
+`test_setup_mock.py` at the repository root tests the script offline
+against a mock Home Assistant that mirrors the real API responses.
 
 ### Live end-to-end test
 

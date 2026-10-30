@@ -34,7 +34,11 @@ jobs:
         run: python -m py_compile $(find custom_components scripts -name "*.py")
       - name: Smoke tests
         run: python test_smoke.py
-      - name: Realtime test script self-check
-        # Live API calls need secrets; in CI we only verify the script runs
-        # and validates its arguments.
-        run: python scripts/test_realtime.py --help > /dev/null
+      - name: Setup script against mock Home Assistant
+        run: python test_setup_mock.py
+      - name: Script self-checks
+        # Live API calls need secrets; in CI we only verify the scripts run
+        # and parse their arguments.
+        run: |
+          python scripts/test_realtime.py --help > /dev/null
+          python scripts/setup_assist.py --help > /dev/null
