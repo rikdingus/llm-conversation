@@ -23,6 +23,12 @@ Newest version first.
 - README: "Automated setup" section with bash and Windows PowerShell
   examples (`py` instead of `python3`).
 
+### Fixed
+- `scripts/test_realtime.py`: the "HA connectivity" check expected plain
+  text from `GET /api/`, but Home Assistant answers JSON
+  `{"message": "API running."}`, so it always failed against a working
+  Home Assistant. Now covered by `test_setup_mock.py`.
+
 ### Changed
 - **Minimum Home Assistant version raised to 2026.10.0** (`hacs.json`),
   matching the LLM API surface the integration is built and verified

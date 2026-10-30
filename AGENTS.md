@@ -262,6 +262,8 @@ script, check the facts below against the core source of the targeted tag
 optionally, a running Home Assistant. Key facts (verified against the
 2026.10.4 core source — keep them when editing):
 
+- `GET /api/` answers JSON `{"message": "API running."}` (same as for
+  the setup script; `test_setup_mock.py` covers this check too).
 - HA exposes the STT entity at `POST /api/stt/{entity_id}` with metadata
   in the `X-Speech-Content` header
   (`format=wav; codec=pcm; bit_rate=16; sample_rate=16000; channel=1; language=…`)

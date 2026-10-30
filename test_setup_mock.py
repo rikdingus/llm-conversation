@@ -1,4 +1,5 @@
-"""Offline test for scripts/setup_assist.py against a mock Home Assistant.
+"""Offline test for scripts/setup_assist.py (and the HA connectivity check
+of scripts/test_realtime.py) against a mock Home Assistant.
 
 The mock mirrors the HA 2026.10.4 API shapes the script depends on
 (verified against the core source, see AGENTS.md):
@@ -432,6 +433,16 @@ except sa.SetupError as err:
 else:
     raise AssertionError("wrong websocket token accepted")
 print("TEST 6 OK: websocket auth failure reported")
+
+# 7. test_realtime.py's HA connectivity check against the same mock
+rt_spec = importlib.util.spec_from_file_location("test_realtime", _here / "scripts" / "test_realtime.py")
+rt = importlib.util.module_from_spec(rt_spec)
+rt_spec.loader.exec_module(rt)
+rt.test_ha_api(BASE, TOKEN)
+assert rt.RESULTS[-1][1], rt.RESULTS[-1]
+rt.test_ha_api(BASE, "wrong-token")
+assert not rt.RESULTS[-1][1], rt.RESULTS[-1]
+print("TEST 7 OK: test_realtime.py HA connectivity check")
 
 server.shutdown()
 print("ALL SETUP-SCRIPT TESTS PASSED")
