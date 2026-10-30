@@ -224,7 +224,9 @@ def ha_headers(token: str, content_type: str | None = None) -> dict[str, str]:
 
 def test_ha_api(ha_url: str, token: str) -> None:
     status, data = http_json("GET", f"{ha_url}/api/", headers=ha_headers(token))
-    record("HA connectivity", status == 200 and str(data).startswith("API running"), f"HTTP {status}: {str(data)[:80]}")
+    # HA answers JSON {"message": "API running."}
+    ok = status == 200 and isinstance(data, dict) and data.get("message") == "API running."
+    record("HA connectivity", ok, f"HTTP {status}: {str(data)[:80]}")
 
 
 def test_ha_conversation(ha_url: str, token: str, agent_id: str, text: str) -> None:

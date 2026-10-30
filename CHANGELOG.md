@@ -1,5 +1,52 @@
 # Changelog
 
+Newest version first.
+
+## 2.2.2
+
+### Added
+- **Automated setup script** (`scripts/setup_assist.py`): does everything
+  after the HACS install, driven entirely by the HA API. It creates the
+  Mistral config entry (or reuses the existing one, also when renamed),
+  saves the options (Assist device control, Voxtral STT/TTS models, voice
+  ID) while keeping every value you didn't pass, waits until the
+  conversation/stt/tts entities are available, and creates a dedicated
+  **Mistral** Assist pipeline that becomes the preferred one. Other
+  pipelines are left untouched. Pure standard library, so it runs on your
+  laptop or in the HA SSH/terminal add-on. Secrets come from the
+  environment or a hidden prompt, never from command-line arguments, and
+  are never printed (also not in error messages).
+- `test_setup_mock.py`: offline test for the setup script against a mock
+  Home Assistant that mirrors the 2026.10.4 API responses (API status,
+  config/options flow, entity registry, assist pipeline websocket
+  commands). Runs in CI.
+- README: "Automated setup" section with bash and Windows PowerShell
+  examples (`py` instead of `python3`).
+
+### Fixed
+- `scripts/test_realtime.py`: the "HA connectivity" check expected plain
+  text from `GET /api/`, but Home Assistant answers JSON
+  `{"message": "API running."}`, so it always failed against a working
+  Home Assistant. Now covered by `test_setup_mock.py`.
+
+### Changed
+- **Minimum Home Assistant version raised to 2026.10.0** (`hacs.json`),
+  matching the LLM API surface the integration is built and verified
+  against (2026.10.4).
+- CHANGELOG ordered newest first.
+- Version bumped to 2.2.2.
+
+## 2.2.1
+
+### Added
+- Brand assets (`brand/icon.png` 256×256, `icon@2x.png` 512×512) so HACS
+  validation passes without a Home Assistant brands-repo entry.
+
+### Changed
+- AGENTS.md updated for the 2.2.0 changes (usage chunks, truncation,
+  reauth, network-error handling, Anthropic caching, Gemini ids, single
+  client registry).
+
 ## 2.2.0
 
 ### Fixed
@@ -42,14 +89,3 @@
 - Realtime script: secrets via environment variables recommended (command
   line arguments end up in shell history); fetching the TTS audio no longer
   crashes the run on a network error.
-
-## 2.2.1
-
-### Added
-- Brand assets (`brand/icon.png` 256×256, `icon@2x.png` 512×512) so HACS
-  validation passes without a Home Assistant brands-repo entry.
-
-### Changed
-- AGENTS.md updated for the 2.2.0 changes (usage chunks, truncation,
-  reauth, network-error handling, Anthropic caching, Gemini ids, single
-  client registry).

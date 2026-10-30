@@ -40,8 +40,10 @@ llm-conversation/
 ├── README.md                     ← user-facing install & usage docs
 ├── hacs.json                     ← HACS metadata
 ├── test_smoke.py                  ← offline test suite (stubs HA/probatio/aiohttp)
-├── CHANGELOG.md
+├── test_setup_mock.py            ← setup script vs. mock HA (REST + websocket)
+├── CHANGELOG.md                  ← newest version first
 ├── scripts/test_realtime.py      ← live API test (Mistral + HA REST, stdlib only)
+├── scripts/setup_assist.py       ← post-HACS setup via the HA API (stdlib only)
 ├── .github/workflows/validate.yaml
 └── custom_components/llm_conversation/
     ├── manifest.json
@@ -213,8 +215,9 @@ to the forwarded platforms for those entries (setup AND unload).
 From the repository root (no Home Assistant installation required):
 
 ```bash
-python3 -m py_compile $(find custom_components -name "*.py")
-python3 test_smoke.py     # must print: ALL SMOKE TESTS PASSED
+python3 -m py_compile $(find custom_components scripts -name "*.py")
+python3 test_smoke.py       # must print: ALL SMOKE TESTS PASSED
+python3 test_setup_mock.py  # must print: ALL SETUP-SCRIPT TESTS PASSED
 ```
 
 `test_smoke.py` stubs `homeassistant`, `probatio` and `aiohttp` modules,
@@ -224,12 +227,43 @@ the Voxtral STT/TTS entities, token usage tracing, max-tokens truncation,
 Anthropic cache markers, unique Gemini ids and empty transcriptions. It
 locates the component relative to its own path, so it runs anywhere
 (locally and in CI). Run it after every change to `entity.py` or `providers/`.
-CI (`.github/workflows/validate.yaml`) runs HACS validation and hassfest.
+CI (`.github/workflows/validate.yaml`) runs HACS validation, hassfest and
+both offline test files.
+
+**`scripts/setup_assist.py`** drives a live Home Assistant through its
+REST + websocket API. `test_setup_mock.py` mirrors these responses; a mock
+that agrees with a wrong assumption hides the bug, so when you change the
+script, check the facts below against the core source of the targeted tag
+(all verified against 2026.10.4) and keep the mock in sync:
+
+- `GET /api/` answers JSON `{"message": "API running."}`, not plain text.
+- `GET /api/config/config_entries/entry?domain=…` returns
+  `entry.as_json_fragment`: entry_id, title, state, … but **never
+  `data`**, so the provider can't be read from it. The script recognises
+  a Mistral entry by its STT entity (`config/entity_registry/list`, whose
+  items carry `config_entry_id`, `platform`, `entity_id`, `disabled_by`).
+- When a flow step fails, HA re-sends the form with the submitted values
+  as `description.suggested_value` (`add_suggested_values_to_schema`), so
+  printing a flow response can leak the API key: print only `errors`.
+  The options form uses the same mechanism to show the current options,
+  which the script reads to merge (submitting the form REPLACES options).
+- Flows are aborted with `DELETE /api/config/config_entries/[options/]flow/{id}`.
+- Websocket: path `/api/websocket` (mind double slashes), and
+  `auth_required` may arrive in the same packet as the `101` handshake.
+- `assist_pipeline/pipeline/list` → `{"pipelines": [...],
+  "preferred_pipeline": id}`. `create` and `update` require **every**
+  field of `PIPELINE_FIELDS` including `name` (`update` replaces the
+  pipeline, so carry over wake word and `prefer_local_intents`);
+  `update` and `set_preferred` identify the pipeline with `pipeline_id`.
+- LLM agents use `conversation_language: "*"`; the pipeline then uses the
+  STT/TTS language for local intent fallback (`default_pipeline.py`).
 
 **`scripts/test_realtime.py`** runs against the LIVE Mistral API and,
 optionally, a running Home Assistant. Key facts (verified against the
 2026.10.4 core source — keep them when editing):
 
+- `GET /api/` answers JSON `{"message": "API running."}` (same as for
+  the setup script; `test_setup_mock.py` covers this check too).
 - HA exposes the STT entity at `POST /api/stt/{entity_id}` with metadata
   in the `X-Speech-Content` header
   (`format=wav; codec=pcm; bit_rate=16; sample_rate=16000; channel=1; language=…`)
